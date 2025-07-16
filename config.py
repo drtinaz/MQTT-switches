@@ -262,14 +262,23 @@ class ServiceConfig:
     
     def _get_next_device_instance(self):
         """Finds the next available device instance number starting from 100."""
-        bus = dbus.SystemBus()
-        # A simpler, if less robust, approach is to just iterate from 100 and check existence
-        for i in range(100, 200): # Check instances 100 to 199
-            instance_path = self.get_dynamic_setting_path(f"Device/{i}/Instance")
-            if self.get_dynamic_setting(instance_path) is None: # If instance path doesn't exist
-                return i
-        logging.error("No available device instance numbers found (100-199).")
-        return None # Should not happen unless too many devices are configured
+        
+        used_instance_numbers = set()
+        
+        for conceptual_idx in range(100): # Scan potential conceptual device indices (0-99)
+            path = self.get_dynamic_setting_path(f"Device/{conceptual_idx}/Instance")
+            instance_val = self.get_dynamic_setting(path)
+            if instance_val is not None and isinstance(instance_val, int):
+                used_instance_numbers.add(instance_val)
+        
+        # Now find the first available instance number starting from 100
+        for candidate_instance in range(100, 200): # Iterate through actual instance numbers (100, 101, ...)
+            if candidate_instance not in used_instance_numbers:
+                logging.info(f"Found next available instance number: {candidate_instance}")
+                return candidate_instance
+        
+        logging.error("No available device instance numbers found in the range 100-199. Max limit reached or too many existing uncleaned settings.")
+        return None
 
     def _generate_random_serial(self):
         """Generates a random 16-digit serial number string."""
