@@ -6,7 +6,7 @@ import sys
 import logging
 import random
 from gi.repository import GLib
-from dbus.mainloop.glib import DBusGMainLoop # <--- ADDED THIS LINE
+from dbus.mainloop.glib import DBusGMainLoop
 
 # Adjust the path for velib_python if necessary based on your Cerbo GX setup
 sys.path.insert(1, "/opt/victronenergy/dbus-systemcalc-py/ext/velib_python")
@@ -21,11 +21,11 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
 DBUS_SETTINGS_SERVICE = "com.victronenergy.settings"
 DBUS_SETTINGS_BASE_PATH = "/Settings/MQTTSwitches" # Updated base path
 
-# --- Helper for dbus-send commands (for adding/removing settings) ---
-def _run_dbus_send_command(command_args):
+# --- Helper for dbus commands (for adding/removing settings) ---
+def _run_dbus_command(command_args):
     """
-    Helper function to execute dbus-send commands for adding/removing settings.
-    This mimics the behavior of DbusSettingsResources.txt.
+    Helper function to execute dbus commands for adding/removing settings.
+    This mimics the behavior of DbusSettingsResources.txt using the 'dbus' command.
     """
     try:
         # Using check_output to capture stdout and raise CalledProcessError for non-zero exit codes
@@ -40,39 +40,43 @@ def _run_dbus_send_command(command_args):
         logging.error(f"An unexpected error occurred while executing D-Bus command: {e}")
         return False, str(e)
 
-# --- Functions for managing D-Bus settings (create/remove using dbus-send) ---
+# --- Functions for managing D-Bus settings (create/remove using 'dbus' command) ---
 
 def add_dbus_setting(path, default_value, data_type_char):
     """
-    Adds a new D-Bus setting. Uses dbus-send --system.
+    Adds a new D-Bus setting. Uses 'dbus -y' command.
     data_type_char: 's' for string, 'i' for int, 'd' for double.
     """
     if data_type_char not in ['s', 'i', 'd']:
         logging.error(f"Invalid data type character '{data_type_char}'. Use 's', 'i', or 'd'.")
         return False
 
+    default_val_str = ""
     if data_type_char == 's':
-        default_val_str = f'"{default_value}"' if default_value is not None else '""'
-        type_signature = 's:s'
+        # Ensure default string values are correctly quoted and escaped for the D-Bus array string
+        # If default_value is None, it should become '""'
+        if default_value is None:
+            default_val_for_json = '""'
+        else:
+            default_val_for_json = f'"{str(default_value).replace('"', '\\"')}"'
+        default_val_str = f'"default":{default_val_for_json}'
     elif data_type_char == 'i':
-        default_val_str = str(int(default_value)) if default_value is not None else '0'
-        type_signature = 's:i'
+        default_val_str = f'"default":{int(default_value) if default_value is not None else 0}'
     elif data_type_char == 'd':
-        default_val_str = str(float(default_value)) if default_value is not None else '0.0'
-        type_signature = 's:d'
-
-    settings_arg = f'{{ "path": "{path}", "default": {default_val_str} }}'
+        default_val_str = f'"default":{float(default_value) if default_value is not None else 0.0}'
+    
+    # Construct the struct string for the D-Bus array
+    settings_arg_struct = f'{{ "path":"{path}", {default_val_str} }}'
     
     command = [
-        "dbus-send", "--system", "--print-reply=literal",
-        "--dest=" + DBUS_SETTINGS_SERVICE,
+        "dbus", "-y", # -y automatically confirms "yes"
+        DBUS_SETTINGS_SERVICE,
         "/",  # Object path for AddSettings method
-        "com.victronenergy.settings.AddSettings",
-        f"array:struct:{{{type_signature}}}",
-        f"[{settings_arg}]"
+        "AddSettings",
+        f"%[ {settings_arg_struct} ]" # Pass the array of structs as a single string argument
     ]
     logging.info(f"Attempting to add setting: {path} (Default: {default_value}, Type: {data_type_char})")
-    success, _ = _run_dbus_send_command(command)
+    success, _ = _run_dbus_command(command)
     if success:
         logging.info(f"Setting '{path}' added successfully.")
     else:
@@ -81,18 +85,17 @@ def add_dbus_setting(path, default_value, data_type_char):
 
 def remove_dbus_setting(path):
     """
-    Removes a D-Bus setting. Uses dbus-send --system.
+    Removes a D-Bus setting. Uses 'dbus -y' command.
     """
     command = [
-        "dbus-send", "--system", "--print-reply=literal",
-        "--dest=" + DBUS_SETTINGS_SERVICE,
+        "dbus", "-y", # -y automatically confirms "yes"
+        DBUS_SETTINGS_SERVICE,
         "/",  # Object path for RemoveSettings method
-        "com.victronenergy.settings.RemoveSettings",
-        "array:string",
-        f"'{path}'" # dbus-send expects single quotes for string array elements
+        "RemoveSettings",
+        f"%[ \"{path}\" ]" # Pass the array of strings as a single string argument
     ]
     logging.info(f"Attempting to remove setting: {path}")
-    success, _ = _run_dbus_send_command(command)
+    success, _ = _run_dbus_command(command)
     if success:
         logging.info(f"Setting '{path}' removed successfully.")
     else:
@@ -135,7 +138,7 @@ class ServiceConfig:
     def _ensure_base_settings_exist(self):
         """
         Ensures the core settings for the service exist in D-Bus.
-        If they don't, it adds them using dbus-send.
+        If they don't, it adds them using dbus command.
         """
         logging.info("Checking for existence of core service settings...")
         for key, details in self.settings_list.items():
@@ -198,9 +201,7 @@ class ServiceConfig:
             logging.error(f"Setting key '{setting_key}' not found in internal list. Cannot set directly via SettingsDevice.")
             # For dynamic paths (devices/switches), we need to set directly via BusItem.SetValue()
             # This is complex as it requires knowing the exact D-Bus path and data type for SetValue.
-            # For this script, we'll keep the direct set via `dbus-send` if not managed by SettingsDevice
-            # (though transfer_switch.py shows direct SetValue on existing objects)
-            # The prompt implies `dbus-send` is preferred for modifications.
+            # For this script, we'll keep the direct set via `dbus` command for modifications.
             logging.warning("Please ensure the setting is already created before attempting to set dynamic paths.")
             return False
         except Exception as e:
@@ -222,9 +223,12 @@ class ServiceConfig:
             logging.debug(f"Retrieved dynamic setting '{path}': {value}")
             return value
         except dbus.exceptions.DBusException as e:
-            if "Does not exist" in str(e):
-                logging.debug(f"Dynamic setting '{path}' does not exist.")
+            # Suppress specific errors that indicate the setting simply doesn't exist
+            error_message = str(e)
+            if "Does not exist" in error_message or "UnknownObject" in error_message:
+                logging.debug(f"Dynamic setting '{path}' does not exist (expected for new settings).")
             else:
+                # Log other D-Bus exceptions as errors
                 logging.error(f"Error getting dynamic D-Bus setting '{path}': {e}")
             return None
         except Exception as e:
@@ -234,7 +238,7 @@ class ServiceConfig:
     def set_dynamic_setting(self, path, value, data_type_str):
         """
         Sets a dynamic setting (device/switch related) in D-Bus.
-        Uses dbus-send for robustness in setting any type.
+        Uses 'dbus -y' command for robustness in setting any type.
         data_type_str: 'string', 'int', 'float', 'bool'
         """
         dbus_type_map = {
@@ -250,20 +254,24 @@ class ServiceConfig:
         
         dbus_send_type = dbus_type_map[data_type_str]
 
-        # Prepare value for dbus-send
+        # Prepare value for dbus command.
+        # The 'dbus' command expects specific formatting for types, especially bool.
         value_for_dbus = str(value)
         if data_type_str == 'bool':
             value_for_dbus = "true" if value else "false"
+        elif data_type_str == 'string':
+            value_for_dbus = f'"{value_for_dbus}"' # Strings need to be quoted for dbus command
+
 
         command = [
-            "dbus-send", "--system", "--print-reply=literal",
-            "--dest=" + DBUS_SETTINGS_SERVICE,
+            "dbus", "-y", # -y automatically confirms "yes"
+            DBUS_SETTINGS_SERVICE,
             path,
-            "com.victronenergy.BusItem.SetValue",
-            f"{dbus_send_type}:{value_for_dbus}"
+            "SetValue",
+            f"{dbus_send_type}:{value_for_dbus}" # Format: type:value
         ]
         logging.debug(f"Attempting to set dynamic setting '{path}' to '{value}' ({data_type_str}).")
-        success, _ = _run_dbus_send_command(command)
+        success, _ = _run_dbus_command(command)
         if success:
             logging.debug(f"Successfully set dynamic setting '{path}'.")
         else:
@@ -273,25 +281,6 @@ class ServiceConfig:
     def _get_next_device_instance(self):
         """Finds the next available device instance number starting from 100."""
         bus = dbus.SystemBus()
-        max_instance = 99
-        try:
-            # List all services to find existing instances
-            # This is a bit of a hack, a dedicated D-Bus path would be better
-            # For simplicity, we assume instances are found under our service's path
-            for service_name in bus.list_names():
-                if service_name.startswith(f"com.victronenergy.settings"):
-                    # Check for device instance paths directly
-                    try:
-                        obj_paths = bus.get_object(service_name, '/').Introspect()
-                        # A more robust way might be to iterate through numerical indices 100+
-                        # For now, let's just find the max existing instance
-                        # This part needs refinement if actual device instance paths are complex
-                        pass
-                    except dbus.exceptions.DBusException:
-                        pass
-        except Exception as e:
-            logging.warning(f"Could not scan existing D-Bus paths for device instances: {e}")
-
         # A simpler, if less robust, approach is to just iterate from 100 and check existence
         for i in range(100, 200): # Check instances 100 to 199
             instance_path = self.get_dynamic_setting_path(f"Device/{i}/Instance")
@@ -376,7 +365,7 @@ class ServiceConfig:
                 if instance is None:
                     logging.error("Failed to get a new device instance. Aborting device configuration.")
                     break
-                # Add the instance setting
+                # Add the instance setting using the improved add_dbus_setting
                 add_dbus_setting(device_instance_path, instance, 'i')
                 self.set_dynamic_setting(device_instance_path, instance, 'int') # Set the value
             else:
@@ -395,7 +384,7 @@ class ServiceConfig:
             }
             
             # Ensure these dynamic settings exist before trying to get/set
-            # Add them if they don't, with reasonable defaults
+            # Add them if they don't, with reasonable defaults using the improved add_dbus_setting
             if self.get_dynamic_setting(device_paths['NumberOfSwitches']) is None:
                 add_dbus_setting(device_paths['NumberOfSwitches'], 1, 'i')
             if self.get_dynamic_setting(device_paths['CustomName']) is None:
@@ -474,6 +463,7 @@ class ServiceConfig:
                 }
 
                 # Ensure these dynamic switch settings exist before trying to get/set
+                # using the improved add_dbus_setting
                 if self.get_dynamic_setting(switch_paths['CustomName']) is None:
                     add_dbus_setting(switch_paths['CustomName'], f"Switch {j+1}", 's')
                 if self.get_dynamic_setting(switch_paths['Group']) is None:
@@ -558,7 +548,7 @@ class ServiceConfig:
         
         # Execute removal for all collected paths
         for path in paths_to_remove:
-            remove_dbus_setting(path)
+            remove_dbus_setting(path) # Using the improved remove_dbus_setting
         
         logging.info(f"Finished removing settings for device index {device_idx}.")
 
@@ -603,12 +593,12 @@ class ServiceConfig:
             mqtt_off_payload_path = self.get_dynamic_setting_path(f"Device/{i}/MqttOffPayload")
             mqtt_off_payload = self.get_dynamic_setting(mqtt_off_payload_path)
 
-            serial_number_path = self.get_dynamic_setting_path(f"Device/{i}/SerialNumber") # New serial number path
+            serial_number_path = self.get_dynamic_setting_path(f"Device/{i}/SerialNumber")
             serial_number = self.get_dynamic_setting(serial_number_path)
 
 
             logging.info(f"  Device {i+1} (Instance: {instance}, Name: '{custom_name}')")
-            logging.info(f"    Serial Number: {serial_number}") # Display serial number
+            logging.info(f"    Serial Number: {serial_number}")
             logging.info(f"    Number of Switches: {num_switches}")
             logging.info(f"    MQTT ON Payload: {mqtt_on_payload}")
             logging.info(f"    MQTT OFF Payload: {mqtt_off_payload}")
