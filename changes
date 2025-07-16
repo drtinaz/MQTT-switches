@@ -1,2 +1,4 @@
 v0.5.1
   complete rework to eliminate config.ini file and include a config.py script for service configuration.
+v0.5.2
+  fix device instance numbering in config.py
