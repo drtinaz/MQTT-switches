@@ -255,12 +255,13 @@ class ServiceConfig:
         dbus_send_type = dbus_type_map[data_type_str]
 
         # Prepare value for dbus command.
-        # The 'dbus' command expects specific formatting for types, especially bool.
         value_for_dbus = str(value)
         if data_type_str == 'bool':
             value_for_dbus = "true" if value else "false"
-        elif data_type_str == 'string':
-            value_for_dbus = f'"{value_for_dbus}"' # Strings need to be quoted for dbus command
+        # The line below is the one to change/remove for string values.
+        # It's generally not needed for 'dbus' command when passing plain strings.
+        # elif data_type_str == 'string':
+        #    value_for_dbus = f'"{value_for_dbus}"' # REMOVE THIS LINE
 
 
         command = [
