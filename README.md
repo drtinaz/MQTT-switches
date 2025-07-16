@@ -5,11 +5,8 @@ setup helper. The simplest method is setup helper.
 
 *********** MANUAL INSTALLATION *************
 1. Download this package to the /data directory
-2. open a ssh terminal session and navigate to /data/MQTT-switches
-3. in the terminal enter the following: cp config.ini.example /data/switches.config.ini
-4. navigate to /data and open switches.config.ini using vi or nano and enter the correct details for your configuration.
-5. Save and close switches.config.ini
-6. Install and start the service mqtt_switches.py
+2. If this is the first time being installed, run the configuration script ( /data/MQTT-Switches/config.py )
+3. Install and start the service mqtt_switches.py
 
 
 ************ INSTALL USING kEVINS SETUP HELPER **************
@@ -19,16 +16,14 @@ setup helper. The simplest method is setup helper.
 4. enter the following:
 5. package name : MQTT-switches
 6. github user : drtinaz
-7. github branch or tag : main
+7. github branch or tag : beta
 8. click proceed
 9. now go to 'active packages' and click on MQTT-switches and download
-10. complete steps 2 thru 5 of the manual installation
+10. If this is the first time being installed, run the configuration script from terminal ( /data/MQTT-Switches/config.py )
 11. you can now re-enable 'auto install' in setup helper menu or click 'install' in the active packages
 
 ************ PACKAGE UPDATES **********************
 
 If you chose the manual installation method, you will need to manually download and install any future updates.
 If you chose to use setup helper, any future updates will be automatic as long as 'auto install packages' is selected.
-switches.config.ini will survive package updates, this file only needs to be modified at initial install.
-any changes made from the gui (such as switch names, device names or group names) will automatically be saved to the configuration
-file and these changes will survive a reboot or venus os firmware upgrade.
+sIf you need to change any of the settings, number of devices, or number of switches...rerun the config script.
