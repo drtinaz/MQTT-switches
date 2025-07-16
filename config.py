@@ -238,46 +238,27 @@ class ServiceConfig:
     def set_dynamic_setting(self, path, value, data_type_str):
         """
         Sets a dynamic setting (device/switch related) in D-Bus.
-        Uses 'dbus -y' command for robustness in setting any type.
-        data_type_str: 'string', 'int', 'float', 'bool'
+        Uses direct dbus library to call SetValue on the setting's object path.
+        data_type_str: 'string', 'int', 'float', 'bool' - used for logging/type hint if needed,
+                                                     but dbus library handles marshaling.
         """
-        dbus_type_map = {
-            'string': 'string',
-            'int': 'int32',
-            'float': 'double',
-            'bool': 'boolean'
-        }
-
-        if data_type_str not in dbus_type_map:
-            logging.error(f"Unsupported data type '{data_type_str}'. Use 'string', 'int', 'float', or 'bool'.")
+        try:
+            # Get the D-Bus object for the specific setting path
+            obj = self.bus.get_object(DBUS_SETTINGS_SERVICE, path)
+            
+            # Call the SetValue method on that object
+            # The dbus library generally handles Python types to D-Bus types automatically.
+            # No need for explicit variant wrapping unless dealing with ambiguous types,
+            # but for string, int, float, bool it should be straightforward.
+            obj.SetValue(value)
+            logging.info(f"Successfully set dynamic setting '{path}' to '{value}'.")
+            return True
+        except dbus.exceptions.DBusException as e:
+            logging.error(f"Failed to set dynamic D-Bus setting '{path}' to '{value}': {e}")
             return False
-        
-        dbus_send_type = dbus_type_map[data_type_str]
-
-        # Prepare value for dbus command.
-        value_for_dbus = str(value)
-        if data_type_str == 'bool':
-            value_for_dbus = "true" if value else "false"
-        # The line below is the one to change/remove for string values.
-        # It's generally not needed for 'dbus' command when passing plain strings.
-        # elif data_type_str == 'string':
-        #    value_for_dbus = f'"{value_for_dbus}"' # REMOVE THIS LINE
-
-
-        command = [
-            "dbus", "-y", # -y automatically confirms "yes"
-            DBUS_SETTINGS_SERVICE,
-            path,
-            "SetValue",
-            f"{dbus_send_type}:{value_for_dbus}" # Format: type:value
-        ]
-        logging.debug(f"Attempting to set dynamic setting '{path}' to '{value}' ({data_type_str}).")
-        success, _ = _run_dbus_command(command)
-        if success:
-            logging.debug(f"Successfully set dynamic setting '{path}'.")
-        else:
-            logging.error(f"Failed to set dynamic setting '{path}'.")
-        return success
+        except Exception as e:
+            logging.error(f"An unexpected error occurred setting dynamic setting '{path}': {e}")
+            return False
     
     def _get_next_device_instance(self):
         """Finds the next available device instance number starting from 100."""
@@ -576,7 +557,7 @@ class ServiceConfig:
             instance_path = self.get_dynamic_setting_path(f"Device/{i}/Instance")
             instance = self.get_dynamic_setting(instance_path)
             
-            if instance is None:
+            if instance is None: 
                 logging.info(f"  Device {i+1}: No instance found (may not be fully configured or deleted).")
                 continue
 
