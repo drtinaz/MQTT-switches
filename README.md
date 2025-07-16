@@ -9,7 +9,7 @@ setup helper. The simplest method is setup helper.
 3. Install and start the service mqtt_switches.py
 
 
-************ INSTALL USING kEVINS SETUP HELPER **************
+************ INSTALL USING KEVINS SETUP HELPER **************
 1. Install Kevins setup helper ( https://github.com/kwindrem/SetupHelper )
 2. Goto settings/package manager and turn off 'auto install'
 3. From the package manager menu click on inactive packages and click 'new' at the top
