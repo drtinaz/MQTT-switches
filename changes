@@ -1,2 +1,2 @@
-beta0.1
+v0.5.1
   complete rework to eliminate config.ini file and include a config.py script for service configuration.
