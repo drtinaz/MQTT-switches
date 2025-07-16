@@ -24,6 +24,6 @@ setup helper. The simplest method is setup helper.
 
 ************ PACKAGE UPDATES **********************
 
-If you chose the manual installation method, you will need to manually download and install any future updates.
-If you chose to use setup helper, any future updates will be automatic as long as 'auto install packages' is selected.
-sIf you need to change any of the settings, number of devices, or number of switches...rerun the config script.
+If you choose the manual installation method, updates to this service or venus firmware will require a re-install.
+If you choose the setup helper method, updates to this service or venus firmware will automatically reinstall this service.
+If you need to change any of the settings, number of devices, or number of switches...rerun the config script.
